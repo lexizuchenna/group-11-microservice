@@ -17,6 +17,7 @@ datasource db {
 model User {
   user_id String @id @default(uuid())
   name String
+  email String @unique
   push_token String?
   preferences Json?
   password String
