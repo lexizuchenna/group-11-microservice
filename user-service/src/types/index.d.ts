@@ -1,7 +1,7 @@
 import { UUID } from "crypto";
 
 export type user_type = {
-  user_id: string;
+  user_id: UUID;
   name: string;
   email: string;
   push_token: string | null;
