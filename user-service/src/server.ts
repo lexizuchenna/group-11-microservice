@@ -1,15 +1,54 @@
 import fastify, { FastifyRequest, FastifyReply } from "fastify";
 import dotenv from "dotenv";
 import jwt from "@fastify/jwt";
+import swagger from "@fastify/swagger";
+import swaggerUi from "@fastify/swagger-ui";
+import { UUID } from "crypto";
 
 import { user_routes } from "./routes/user.routes";
 import { auth_routes } from "./routes/auth.routes";
 import { prisma } from "./plugins/db";
-import { UUID } from "crypto";
+import { meta_schema } from "./schema/shared.schema";
 
 dotenv.config();
 
-const server = fastify();
+const server = fastify({
+  ajv: {
+    customOptions: {
+      strict: false,
+    },
+  },
+});
+
+server.addSchema(meta_schema);
+
+server.register(swagger, {
+  openapi: {
+    openapi: "3.0.0",
+    info: {
+      title: "User Service API",
+      version: "0.1.0",
+    },
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
+        },
+      },
+    },
+    security: [
+      {
+        bearerAuth: [],
+      },
+    ],
+  },
+});
+
+server.register(swaggerUi, {
+  routePrefix: "/docs", // this sets the route
+});
 
 server.register(jwt, {
   secret: process.env.JWT_SECRET || "keyboard_dog",
@@ -141,11 +180,11 @@ server.register(user_routes, { prefix: "/api/v1/user" });
 
 server.get("/health", async (request, reply) => {
   try {
-    return {
+    return reply.status(200).send({
       status: "ok",
       service: "user_service",
       timestamp: new Date().toISOString(),
-    };
+    });
   } catch (error) {
     console.error(error);
     return {
@@ -155,6 +194,8 @@ server.get("/health", async (request, reply) => {
     };
   }
 });
+
+server.swagger;
 
 server.listen(
   { port: Number(process.env.PORT) || 3000, host: "0.0.0.0" },
