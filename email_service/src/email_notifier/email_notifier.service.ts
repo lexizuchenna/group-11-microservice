@@ -5,7 +5,7 @@ import * as amqplib from 'amqplib';
 
 @Injectable()
 export class email_notifier_service {
-  async getHealthStatus(): Promise<email_notifier_health_dto> {
+  async get_health_status(): Promise<email_notifier_health_dto> {
     const is_connected = await this.is_connected_to_queue();
 
     if (is_connected)
@@ -49,9 +49,7 @@ export class email_notifier_service {
       const conn = await amqplib.connect(url);
       const channel = await conn.createChannel();
 
-      // Try asserting exchange and queue — if it fails, connection is bad
-      await channel.assertExchange('notifications.direct', 'direct', { durable: true });
-      await channel.assertQueue('email.queue', { durable: true });
+      await channel.checkQueue('email.queue');
 
       await channel.close();
       await conn.close();
