@@ -37,7 +37,7 @@ export enum health_status {
 
 export class microservice_health_dto {
   @IsString()
-  serviceName: string;
+  service_name: string;
 
   @IsEnum(health_status)
   status: health_status;
