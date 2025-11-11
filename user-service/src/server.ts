@@ -136,7 +136,7 @@ server.decorate(
   }
 );
 
-server.register(auth_routes);
+server.register(auth_routes, { prefix: "/api/v1/auth" });
 server.register(user_routes, { prefix: "/api/v1/user" });
 
 server.get("/health", async (request, reply) => {
