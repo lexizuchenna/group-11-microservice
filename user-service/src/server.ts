@@ -1,12 +1,116 @@
-import fastify from "fastify";
+import fastify, { FastifyRequest, FastifyReply } from "fastify";
 import dotenv from "dotenv";
+import jwt from "@fastify/jwt";
+
 import { user_routes } from "./routes/user.routes";
+import { auth_routes } from "./routes/auth.routes";
 
 dotenv.config();
 
 const server = fastify();
 
+server.register(jwt, {
+  secret: process.env.JWT_SECRET || "keyboard_dog",
+  sign: {
+    expiresIn: "7d",
+  },
+});
+
+server.addHook("preHandler", (request, reply, next) => {
+  request.jwt = server.jwt;
+  return next();
+});
+
+server.decorate(
+  "authenticate",
+  async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const authHeader = request.headers.authorization;
+
+      if (!authHeader || !authHeader.startsWith("Bearer"))
+        return reply.status(401).send({
+          success: false,
+          error: "Invalid Token",
+          message: "Authentication token not found",
+          meta: {
+            total: 0,
+            limit: 0,
+            page: 0,
+            total_pages: 0,
+            has_next: false,
+            has_previous: false,
+          },
+        });
+
+      const token = authHeader.split(" ")[1];
+
+      if (!token)
+        return reply.status(401).send({
+          success: false,
+          error: "Invalid Token",
+          message: "Authentication token not found",
+          meta: {
+            total: 0,
+            limit: 0,
+            page: 0,
+            total_pages: 0,
+            has_next: false,
+            has_previous: false,
+          },
+        });
+
+      return request.jwt.verify(token);
+    } catch (err: any) {
+      if (err.name === "TokenExpiredError") {
+        return reply.status(401).send({
+          success: false,
+          error: "Token Expired",
+          message: "Authentication token has expired",
+          meta: {
+            total: 0,
+            limit: 0,
+            page: 0,
+            total_pages: 0,
+            has_next: false,
+            has_previous: false,
+          },
+        });
+      }
+      if (err.name === "JsonWebTokenError") {
+        return reply.status(401).send({
+          success: false,
+          error: "Invalid Token",
+          message: "Invalid authentication token",
+          meta: {
+            total: 0,
+            limit: 0,
+            page: 0,
+            total_pages: 0,
+            has_next: false,
+            has_previous: false,
+          },
+        });
+      }
+
+      return reply.status(401).send({
+        success: false,
+        error: "Unauthorized",
+        message: "Authentication failed",
+        meta: {
+          total: 0,
+          limit: 0,
+          page: 0,
+          total_pages: 0,
+          has_next: false,
+          has_previous: false,
+        },
+      });
+    }
+  }
+);
+
 server.register(user_routes);
+server.register(auth_routes);
 
 server.get("/health", async (request, reply) => {
   try {
