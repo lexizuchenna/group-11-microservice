@@ -4,6 +4,8 @@ import jwt from "@fastify/jwt";
 
 import { user_routes } from "./routes/user.routes";
 import { auth_routes } from "./routes/auth.routes";
+import { prisma } from "./plugins/db";
+import { UUID } from "crypto";
 
 dotenv.config();
 
@@ -59,7 +61,32 @@ server.decorate(
           },
         });
 
-      return request.jwt.verify(token);
+      const decoded = request.jwt.verify(token) as {
+        user_id: UUID;
+        iat: number;
+        exp: number;
+      };
+
+      const user = await prisma.user.findUnique({
+        where: { user_id: decoded.user_id },
+      });
+
+      if (!user)
+        return reply.status(400).send({
+          success: false,
+          error: "Invalid user",
+          message: "The user with the specified user_id is not found",
+          meta: {
+            total: 0,
+            limit: 0,
+            page: 0,
+            total_pages: 0,
+            has_next: false,
+            has_previous: false,
+          },
+        });
+
+      request.user = user;
     } catch (err: any) {
       if (err.name === "TokenExpiredError") {
         return reply.status(401).send({
@@ -109,8 +136,8 @@ server.decorate(
   }
 );
 
-server.register(user_routes);
 server.register(auth_routes);
+server.register(user_routes, { prefix: "/api/v1/user" });
 
 server.get("/health", async (request, reply) => {
   try {
