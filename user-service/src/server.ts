@@ -1,9 +1,12 @@
 import fastify from "fastify";
 import dotenv from "dotenv";
+import { user_routes } from "./routes/user.routes";
 
 dotenv.config();
 
 const server = fastify();
+
+server.register(user_routes);
 
 server.get("/health", async (request, reply) => {
   try {
