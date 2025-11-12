@@ -88,6 +88,7 @@ export class email_consumer_service implements OnModuleInit {
       // retry on failures up to 3 times with exponential time, then backoff
       if (this.retry_counts >= 3) {
         // place the request in the failed queue (failed.queue)
+        
         // place update status data {notification_id: ..., status: ...} in the update.queue
         const status_data = {
           notification_id: this.message_in_queque.notification_id,
