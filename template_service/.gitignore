@@ -1,0 +1,5 @@
+.env
+.dockerignore
+__pycache__/
+menv
+templates.db
