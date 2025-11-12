@@ -7,5 +7,7 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true
-  }
+  },
+  "exclude": ["primsa.config.ts"],
+  "include": ["src"]
 }
