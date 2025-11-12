@@ -1,0 +1,32 @@
+openapi: 3.0.3
+info:
+title: Notification API Gateway
+version: 1.0.0
+paths:
+/v1/notifications/send:
+post:
+summary: Send notification (enqueue)
+requestBody:
+required: true
+content:
+application/json:
+schema:
+type: object
+properties:
+request_id:
+type: string
+type:
+type: string
+template_id:
+type: string
+recipient:
+type: object
+variables:
+type: object
+responses:
+'200':
+description: OK
+content:
+application/json:
+schema:
+type: object

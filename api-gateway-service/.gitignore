@@ -1,0 +1,38 @@
+# Go build outputs
+/bin/
+/obj/
+/*.exe
+/*.dll
+/*.so
+/*.dylib
+
+# Go modules
+/go.sum
+
+# IDE/editor configs
+.vscode/
+.idea/
+*.swp
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test and coverage
+coverage.out
+*.test
+
+# Vendor folder (if you vendor dependencies)
+vendor/
+
+# Temporary files
+*.tmp
+*.bak
