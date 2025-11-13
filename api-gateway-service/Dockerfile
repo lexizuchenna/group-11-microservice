@@ -1,12 +1,28 @@
-FROM golang:1.21-alpine AS builder
+FROM golang:1.25-alpine AS builder
 WORKDIR /app
+
+# Copy Go module files first (if go.sum missing, go mod tidy will generate it)
+COPY go.mod ./
+RUN if [ -f go.sum ]; then echo "go.sum exists"; else touch go.sum; fi
+RUN go mod tidy
+
+# Copy the rest of the project
 COPY . .
-RUN apk add --no-cache git
+
+# Build the binary
 RUN go build -o /bin/api-gateway ./cmd/server
 
-
+# ==============================
+# Minimal runtime stage
+# ==============================
 FROM alpine:latest
-RUN apk add --no-cache ca-certificates
-COPY --from=builder /bin/api-gateway /usr/local/bin/api-gateway
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /bin/api-gateway /app/api-gateway
+
+# Expose the port your API runs on
 EXPOSE 8080
-ENTRYPOINT ["/usr/local/bin/api-gateway"]
+
+# Run the binary
+CMD ["./api-gateway"]
