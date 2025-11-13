@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/joho/godotenv"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -20,19 +20,35 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/sony/gobreaker"
 	"github.com/streadway/amqp"
+
+	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
+
+	_ "github.com/Sheedy-T/api-gateway-service/docs"
+
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 // ======================================================
-// Global variables
+// @title API Gateway Service
+// @version 1.0
+// @description This API Gateway routes notifications, templates, and users through microservices and RabbitMQ queues.
+// @host localhost:8080
+// @BasePath /api/v1
+// ======================================================
+
+// ======================================================
+// Global Variables
 // ======================================================
 var (
 	ctx = context.Background()
 
-	rabbitConn *amqp.Connection
-	rabbitCh   *amqp.Channel
-	exchange   = "notifications"
-	emailQueue = "email.queue"
-	pushQueue  = "push.queue"
+	rabbitConn  *amqp.Connection
+	rabbitCh    *amqp.Channel
+	exchange    = "notifications"
+	emailQueue  = "email.queue"
+	pushQueue   = "push.queue"
 	failedQueue = "failed.queue"
 
 	pgPool      *pgxpool.Pool
@@ -71,30 +87,52 @@ type APIResponse struct {
 // ======================================================
 // Main
 // ======================================================
-func main() {
-	_ = godotenv.Load() // optional
 
+// @BasePath /api/v1
+func main() {
+	// Load environment variables
+	_ = godotenv.Load()
+
+	// Configure logger
 	logger.SetFormatter(&logrus.JSONFormatter{})
 
+	// Initialize services
 	initCircuitBreaker()
 	initRabbitMQ()
 	initPostgres()
 	initRedis()
 
-	http.HandleFunc("/health", healthHandler)
-	http.Handle("/metrics", promhttp.Handler())
+	// Create Gin router
+	router := gin.Default()
 
-	http.HandleFunc("/api/v1/notifications/send", withRequestContext(sendNotificationHandler))
-	http.HandleFunc("/api/v1/users/", withRequestContext(userProxyHandler))
-	http.HandleFunc("/api/v1/templates/", withRequestContext(templateProxyHandler))
+	// Swagger endpoints
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	router.GET("/swagger-doc", gin.WrapH(httpSwagger.Handler(
+		httpSwagger.URL("http://localhost:8080/swagger/doc.json"),
+	)))
 
+	// Health check & Prometheus metrics
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, APIResponse{
+			Success: true,
+			Message: "API Gateway healthy",
+		})
+	})
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+	// Core routes
+	router.POST("/api/v1/notifications/send", gin.WrapF(sendNotificationHandler))
+	router.Any("/api/v1/users/*proxyPath", gin.WrapF(userProxyHandler))
+	router.Any("/api/v1/templates/*proxyPath", gin.WrapF(templateProxyHandler))
+
+	// Determine port
 	port := os.Getenv("SERVICE_PORT")
 	if port == "" {
 		port = "8080"
 	}
 
 	logger.Infof("🚀 API Gateway running on port %s", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	log.Fatal(router.Run(":" + port))
 }
 
 // ======================================================
@@ -123,14 +161,12 @@ func initRabbitMQ() {
 			continue
 		}
 
-		// declare exchange
 		if err := rabbitCh.ExchangeDeclare(exchange, "direct", true, false, false, false, nil); err != nil {
 			logger.Warnf("🐇 Exchange declare failed: %v, retrying 10s...", err)
 			time.Sleep(10 * time.Second)
 			continue
 		}
 
-		// declare queues
 		for _, q := range []string{emailQueue, pushQueue, failedQueue} {
 			_, err = rabbitCh.QueueDeclare(q, true, false, false, false, nil)
 			if err != nil {
@@ -138,16 +174,11 @@ func initRabbitMQ() {
 				time.Sleep(10 * time.Second)
 				continue
 			}
+			rabbitCh.QueueBind(q, q, exchange, false, nil)
 		}
-
-		// bind queues to exchange
-		rabbitCh.QueueBind(emailQueue, emailQueue, exchange, false, nil)
-		rabbitCh.QueueBind(pushQueue, pushQueue, exchange, false, nil)
-		rabbitCh.QueueBind(failedQueue, failedQueue, exchange, false, nil)
 
 		logger.Info("✅ RabbitMQ connected, exchange and queues declared")
 
-		// Monitor connection closure asynchronously
 		go func() {
 			closeErr := <-rabbitConn.NotifyClose(make(chan *amqp.Error))
 			if closeErr != nil {
@@ -209,41 +240,6 @@ func initCircuitBreaker() {
 }
 
 // ======================================================
-// Middleware / Context
-// ======================================================
-type ctxKey string
-
-const (
-	ctxRequestIDKey ctxKey = "requestID"
-)
-
-func withRequestContext(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		reqID := r.Header.Get("X-Request-ID")
-		if reqID == "" {
-			reqID = uuid.New().String()
-		}
-		w.Header().Set("X-Request-ID", reqID)
-
-		entry := logger.WithFields(logrus.Fields{
-			"request_id":  reqID,
-			"remote_addr": r.RemoteAddr,
-		})
-
-		start := time.Now()
-		next(w, r.WithContext(context.WithValue(r.Context(), ctxRequestIDKey, reqID)))
-		duration := time.Since(start).Seconds()
-		reqDuration.WithLabelValues(r.URL.Path, "200").Observe(duration)
-		entry.WithField("duration_s", duration).Infof("%s %s", r.Method, r.URL.Path)
-	}
-}
-
-func logWithCtx(r *http.Request) *logrus.Entry {
-	reqID, _ := r.Context().Value(ctxRequestIDKey).(string)
-	return logger.WithField("request_id", reqID)
-}
-
-// ======================================================
 // Helpers
 // ======================================================
 func respondJSON(w http.ResponseWriter, status int, success bool, message string, data interface{}) {
@@ -270,7 +266,7 @@ func publishWithRetry(rq Notification, queue string) error {
 		if retry > 5 {
 			return err
 		}
-		time.Sleep(time.Duration(retry*2) * time.Second) // exponential backoff
+		time.Sleep(time.Duration(retry*2) * time.Second)
 	}
 }
 
@@ -291,7 +287,6 @@ func markRequestDone(requestID string) {
 	_ = redisClient.Set(ctx, key, "done", 24*time.Hour).Err()
 }
 
-// storeNotificationInDB inserts a row into notifications
 func storeNotificationInDB(id uuid.UUID, requestID string, notif Notification, status string) error {
 	q := `INSERT INTO notifications (id, request_id, type, template_id, recipient, variables, status, created_at, updated_at)
           VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW())`
@@ -310,21 +305,27 @@ func updateNotificationStatusInDB(id uuid.UUID, status string) error {
 // ======================================================
 // Handlers
 // ======================================================
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	respondJSON(w, http.StatusOK, true, "API Gateway healthy", nil)
-}
 
+// sendNotificationHandler godoc
+// @Summary Send a notification
+// @Description Queue a notification to email or push service
+// @Tags Notifications
+// @Accept json
+// @Produce json
+// @Param notification body Notification true "Notification data"
+// @Success 200 {object} APIResponse
+// @Failure 400 {object} APIResponse
+// @Failure 500 {object} APIResponse
+// @Router /notifications/send [post]
 func sendNotificationHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		respondJSON(w, http.StatusMethodNotAllowed, false, "Method not allowed", nil)
 		return
 	}
 
-	entry := logWithCtx(r)
 	var notif Notification
 	if err := json.NewDecoder(r.Body).Decode(&notif); err != nil {
 		reqErrors.WithLabelValues("sendNotification", "bad_request").Inc()
-		entry.Error("Invalid request body: ", err)
 		respondJSON(w, http.StatusBadRequest, false, "Invalid request", nil)
 		return
 	}
@@ -335,15 +336,12 @@ func sendNotificationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isDuplicateRequest(requestID) {
-		entry.Info("Duplicate request detected: ", requestID)
 		respondJSON(w, http.StatusOK, true, "Duplicate request ignored", nil)
 		return
 	}
 
 	notifID := uuid.New()
-	if err := storeNotificationInDB(notifID, requestID, notif, "queued"); err != nil {
-		entry.Error("failed to store notification in db: ", err)
-	}
+	_ = storeNotificationInDB(notifID, requestID, notif, "queued")
 
 	var queue string
 	switch notif.Type {
@@ -358,7 +356,6 @@ func sendNotificationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := publishWithRetry(notif, queue); err != nil {
-		entry.Error("Failed to publish to queue: ", err)
 		updateNotificationStatusInDB(notifID, "failed")
 		reqErrors.WithLabelValues("sendNotification", "queue_publish").Inc()
 		respondJSON(w, http.StatusInternalServerError, false, "Failed to queue notification", nil)
@@ -367,12 +364,11 @@ func sendNotificationHandler(w http.ResponseWriter, r *http.Request) {
 
 	markRequestDone(requestID)
 	updateNotificationStatusInDB(notifID, "queued")
-	entry.Infof("Queued %s notification id=%s request_id=%s", notif.Type, notifID.String(), requestID)
 	respondJSON(w, http.StatusOK, true, "Notification queued", map[string]string{"notification_id": notifID.String(), "request_id": requestID})
 }
 
 // ======================================================
-// Proxy handlers with circuit breaker
+// Proxy Handlers
 // ======================================================
 func userProxyHandler(w http.ResponseWriter, r *http.Request) {
 	target := os.Getenv("USER_SERVICE_URL")
@@ -408,7 +404,6 @@ func proxyRequestWithCB(w http.ResponseWriter, r *http.Request, targetBase strin
 	}
 
 	if _, err := cb.Execute(doReq); err != nil {
-		logWithCtx(r).Error("External call failed: ", err)
 		reqErrors.WithLabelValues("proxyRequest", "external_call").Inc()
 		respondJSON(w, http.StatusBadGateway, false, "Downstream service unavailable", nil)
 	}

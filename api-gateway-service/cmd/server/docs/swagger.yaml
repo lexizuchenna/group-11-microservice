@@ -1,0 +1,66 @@
+basePath: /api/v1
+definitions:
+  main.APIResponse:
+    properties:
+      data: {}
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  main.Notification:
+    properties:
+      recipient:
+        additionalProperties: true
+        description: email/push token
+        type: object
+      template_id:
+        description: optional
+        type: string
+      type:
+        description: '"email" or "push"'
+        type: string
+      variables:
+        additionalProperties: true
+        description: template variables
+        type: object
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: This API Gateway routes notifications, templates, and users through
+    microservices and RabbitMQ queues.
+  title: API Gateway Service
+  version: "1.0"
+paths:
+  /notifications/send:
+    post:
+      consumes:
+      - application/json
+      description: Queue a notification to email or push service
+      parameters:
+      - description: Notification data
+        in: body
+        name: notification
+        required: true
+        schema:
+          $ref: '#/definitions/main.Notification'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.APIResponse'
+      summary: Send a notification
+      tags:
+      - Notifications
+swagger: "2.0"
