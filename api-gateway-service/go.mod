@@ -1,6 +1,5 @@
 module github.com/Sheedy-T/api-gateway-service
 
-
 go 1.25.4
 
 require (
