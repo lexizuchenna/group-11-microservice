@@ -1,30 +1,36 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import * as amqplib from 'amqplib';
 import * as admin from 'firebase-admin';
+import { push_message_queue_dto } from './push_consumer.dto';
+import Redis from 'ioredis';
 
 @Injectable()
 export class push_consumer_service implements OnModuleInit {
   private retry_interval = 60000 * 5  // five minutes
   private retry_counts = 0;
-  private message_in_queque: {
-    notification_id: string,
-    title: string,
-    body: string,
-    image?: string,
-    link?: string,
-    device_token: string
-  } = {
+  private message_in_queque: push_message_queue_dto = {
     notification_id: "",
     title: "",
     body: "",
-    image: "",
-    link: "",
-    device_token: ""
+    type: "push",
+    priority: "",
+    device_token: "",
+    data: {
+      message_id: "",
+      click_action: "",
+      sender:""
+    },
+    metadata: {
+      event: "",
+      timestamp: ""
+    },
+    to: ""
   };
 
   private url = process.env.RABBITMQ_SERVER;
   private conn: amqplib.ChannelModel | null = null;
   private channel: amqplib.Channel | null = null;
+  private client: Redis;
   private status_data: {
     notification_id: string,
     status: string
@@ -35,6 +41,11 @@ export class push_consumer_service implements OnModuleInit {
 
   async onModuleInit() {
     // Initialize the SDK
+    this.client = new Redis(
+      process.env.REDIS_SERVER || 
+      'redis://localhost:6379'
+    );
+    
     if (!admin.apps.length) {
       admin.initializeApp({
         credential: admin.credential.cert({
@@ -45,7 +56,7 @@ export class push_consumer_service implements OnModuleInit {
       });
     }
 
-    if (!this.url) throw new Error('Missing RabbitMQ URL');
+    if (!this.url) return;
 
     this.conn = await amqplib.connect(this.url);
     this.channel = await this.conn.createChannel();
@@ -56,7 +67,7 @@ export class push_consumer_service implements OnModuleInit {
     try {
       this.retry_counts += 1;
 
-      if (!this.channel) throw new Error('Invalid queue channel');
+      if (!this.channel) return;
 
       this.channel.consume('push.queue', async (sent_message) => {
         if (!sent_message) return;
@@ -96,9 +107,7 @@ export class push_consumer_service implements OnModuleInit {
         );
 
         if (!this.channel)
-          throw new Error(
-            "Can't acknowledge queue due to unavailable queue channel"
-          );
+          return;
 
         this.channel.ack(sent_message);
       });
@@ -110,7 +119,7 @@ export class push_consumer_service implements OnModuleInit {
         };
 
         if (!this.channel)
-          throw new Error("Can't publish to failed queue due to unavailable queue channel");
+          return;
 
         this.channel.publish(
           'notifications.direct',
@@ -129,9 +138,54 @@ export class push_consumer_service implements OnModuleInit {
       const response = await admin.messaging().send(message);
       return response;
     } catch (err) {
-      // console.error('Error sending push:', err);
-      // Logging error
-      throw err;
+      return;
     }
+  }
+
+  /**
+   * caches a template with TTL of 24 hours
+   * 
+   * @param template the actual data to cache
+   * @returns the template data and it actual user data
+   */
+  async save_template(template: {
+    template_id: string;
+    subject: string;
+    message: string;
+    data: Record<string, any>;
+  }) {
+    const key = `template:${template.template_id}`;
+    const ttl = 24 * 60 * 60; // 24 hours in seconds
+    await this.client
+      .set(key, JSON.stringify(template), 'EX', ttl);
+    // log this
+  }
+
+  /**
+   * retrieves a template by an id
+   * 
+   * @param template_id an id of the tenplate to retrieve
+   * @returns the actual template data or null if not found
+   */
+  async get_template(template_id: string) {
+    const data = await this.client.get(`template:${template_id}`);
+    return data ? JSON.parse(data) : null;
+  }
+
+  /**
+   * 
+   */
+  parse_cache_template(template: {
+    template_id: string;
+    subject: string;
+    message: string;
+    data: Record<string, any>;
+  }, current_data: Record<string, any>) {
+    let transformed_message: string = "";
+    for (const key in template.data) {
+      transformed_message = template.message
+        .replace(template.data[key], current_data[key]);
+    }
+    return transformed_message;
   }
 }
