@@ -1,0 +1,96 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "This API Gateway routes notifications, templates, and users through microservices and RabbitMQ queues.",
+        "title": "API Gateway Service",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/api/v1",
+    "paths": {
+        "/notifications/send": {
+            "post": {
+                "description": "Queue a notification to email or push service",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notifications"
+                ],
+                "summary": "Send a notification",
+                "parameters": [
+                    {
+                        "description": "Notification data",
+                        "name": "notification",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/cmd_server.Notification"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.APIResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "cmd_server.Notification": {
+            "type": "object",
+            "properties": {
+                "recipient": {
+                    "description": "email/push token",
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "template_id": {
+                    "description": "optional",
+                    "type": "string"
+                },
+                "type": {
+                    "description": "\"email\" or \"push\"",
+                    "type": "string"
+                },
+                "variables": {
+                    "description": "template variables",
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
+        "main.APIResponse": {
+            "type": "object",
+            "properties": {
+                "data": {},
+                "message": {
+                    "type": "string"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        }
+    }
+}
