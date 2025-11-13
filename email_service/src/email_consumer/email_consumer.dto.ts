@@ -8,7 +8,10 @@ import {
 import { Type } from 'class-transformer';
 
 
-export class email_message_queue {
+export class email_message_queue_dto {
+  @IsString()
+  notification_id: string;
+
   @IsString()
   type: "email";
 
@@ -21,7 +24,6 @@ export class email_message_queue {
   @IsString()
   body: string;
 
-  @IsOptional()
   @IsString()
   template_id?: string;
 
