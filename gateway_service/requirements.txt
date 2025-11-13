@@ -1,0 +1,10 @@
+Flask>=2.2
+Flask-SQLAlchemy>=3.0
+psycopg2-binary>=2.9
+marshmallow>=3.19
+flasgger>=0.9.5
+pika>=1.3.0
+redis>=4.5
+pybreaker>=0.7.0      # optional circuit breaker lib
+python-dotenv>=1.0
+alembic>=1.10
