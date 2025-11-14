@@ -2,7 +2,7 @@ FROM golang:1.25-alpine AS builder
 WORKDIR /app
 
 # Copy Go module files first (if go.sum missing, go mod tidy will generate it)
-COPY go.mod ./
+COPY go.mod go.sum ./
 RUN if [ -f go.sum ]; then echo "go.sum exists"; else touch go.sum; fi
 RUN go mod tidy
 
