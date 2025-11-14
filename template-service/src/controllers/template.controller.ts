@@ -66,3 +66,138 @@ export const create_template = async (
     });
   }
 };
+
+export const get_templates = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+) => {
+  try {
+    const templates = await prisma.template.findMany({
+      orderBy: { created_at: "desc" },
+    });
+
+    reply.status(200).send({
+      success: true,
+      data: templates,
+      message: "Templates retrieved successfully",
+      meta: {
+        total: templates.length,
+        limit: 0,
+        page: 0,
+        total_pages: 0,
+        has_next: false,
+        has_previous: false,
+      },
+    });
+  } catch (error) {
+    console.error("GET TEMPLATES ERROR:", error);
+
+    reply.status(500).send({
+      success: false,
+      error: "Server error",
+      message: "Something went wrong",
+      meta: {
+        total: 0,
+        limit: 0,
+        page: 0,
+        total_pages: 0,
+        has_next: false,
+        has_previous: false,
+      },
+    });
+  }
+};
+
+export const render_template = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+) => {
+  try {
+    const { name, version, variables } = request.body as {
+      name: string;
+      version?: number;
+      variables: Record<string, any>;
+    };
+
+    // 1. Fetch template (specific version OR latest version)
+    const template = await prisma.template.findFirst({
+      where: version ? { name, version } : { name },
+      orderBy: version ? undefined : { version: "desc" },
+    });
+
+    if (!template) {
+      return reply.status(404).send({
+        success: false,
+        error: "Template not found",
+        message: "No template exists with that name",
+        meta: {
+          total: 0,
+          limit: 0,
+          page: 0,
+          total_pages: 0,
+          has_next: false,
+          has_previous: false,
+        },
+      });
+    }
+
+    const requiredVars: string[] = template.variables as any;
+
+    // 2. Validate missing variables
+    const missing = requiredVars.filter((v) => !(v in variables));
+
+    if (missing.length > 0) {
+      return reply.status(400).send({
+        success: false,
+        error: `Missing variables: ${missing.join(", ")}`,
+        message: "Invalid variable set provided",
+        meta: {
+          total: 0,
+          limit: 0,
+          page: 0,
+          total_pages: 0,
+          has_next: false,
+          has_previous: false,
+        },
+      });
+    }
+
+    // 3. Render template
+    let rendered = template.content;
+
+    requiredVars.forEach((v) => {
+      const regex = new RegExp(`{{\\s*${v}\\s*}}`, "g");
+      rendered = rendered.replace(regex, variables[v]);
+    });
+
+    return reply.status(200).send({
+      success: true,
+      data: { rendered },
+      message: "Template rendered successfully",
+      meta: {
+        total: 1,
+        limit: 0,
+        page: 0,
+        total_pages: 0,
+        has_next: false,
+        has_previous: false,
+      },
+    });
+  } catch (error) {
+    console.error("RENDER TEMPLATE ERROR:", error);
+
+    return reply.status(500).send({
+      success: false,
+      error: "Server Error",
+      message: "Something went wrong while rendering template",
+      meta: {
+        total: 0,
+        limit: 0,
+        page: 0,
+        total_pages: 0,
+        has_next: false,
+        has_previous: false,
+      },
+    });
+  }
+};
