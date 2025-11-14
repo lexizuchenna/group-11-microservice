@@ -7,7 +7,7 @@
 /*.dylib
 
 # Go modules
-/go.sum
+
 
 # IDE/editor configs
 .vscode/
