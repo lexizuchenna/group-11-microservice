@@ -1,4 +1,3 @@
-from . import db  # do not circular import; use SQLAlchemy session via app
 from ..models import IdempotencyKey, NotificationRecord
 from datetime import datetime, timedelta
 

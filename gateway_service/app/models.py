@@ -14,7 +14,7 @@ class NotificationRecord(db.Model):
 
     id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
     request_id = db.Column(db.String, unique=True, nullable=False, index=True)
-    to_identifier = db.Column(db.String, nullable=False)  # email or push token or user id
+    to_identifier = db.Column(db.String, nullable=False)  # email or push token
     notification_type = db.Column(db.String, nullable=False)  # 'email'|'push'|'update'
     payload = db.Column(db.JSON, nullable=False)
     status = db.Column(db.Enum(NotificationStatus), nullable=False, default=NotificationStatus.pending)

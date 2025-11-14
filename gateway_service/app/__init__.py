@@ -1,10 +1,14 @@
 from flask import Flask
+from dotenv import load_dotenv
 from .config import DevelopmentConfig, BaseConfig
 from .extensions import db, swagger
 from .blueprints.gateway import gateway_bp
 import logging
+import os
 
 def create_app(config_object=None):
+    load_dotenv()
+
     app = Flask(__name__)
     app.config.from_object(config_object or DevelopmentConfig)
 

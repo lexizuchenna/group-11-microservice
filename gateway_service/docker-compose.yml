@@ -1,0 +1,22 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: gateway_srv
+      POSTGRES_PASSWORD: gateway^*777HgtffdRfd
+      POSTGRES_DB: gateway_db
+    ports:
+      - "5432:5432"
+  rabbitmq:
+    image: rabbitmq:3.11-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: gateway_srv
+      RABBITMQ_DEFAULT_PASS: gateway^*777HgtffdRfd
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"

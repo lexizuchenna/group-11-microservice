@@ -1,4 +1,6 @@
 from flask import Blueprint, current_app, request, jsonify
+from sqlalchemy import text
+import pika
 from ..extensions import db
 from ..models import NotificationRecord, NotificationStatus
 from ..utils.rabbitmq import get_publisher
@@ -169,18 +171,17 @@ def health():
     checks = {"status": "ok"}
     # db health check
     try:
-        db.session.execute("SELECT 1")
+        db.session.execute(text("SELECT * from notification_records"))
         checks['db'] = 'ok'
     except Exception as ex:
         checks['db'] = f"error: {ex}"
 
-    # rabbit health check
     try:
-        from ..utils.rabbitmq import RabbitPublisher
-        pub = RabbitPublisher(current_app.config['RABBITMQ_URL'], current_app.config['RABBITMQ_EXCHANGE'])
-        checks['rabbitmq'] = 'ok'
-        pub._connection.close()
+        params = pika.URLParameters(current_app.config['RABBITMQ_URL'])
+        conn = pika.BlockingConnection(params)
+        conn.close()
+        checks["rabbitmq"] = "ok"
     except Exception as ex:
-        checks['rabbitmq'] = f"error: {ex}"
+        checks["rabbitmq"] = f"error: {ex}"
 
     return api_response(True, "health check", data=checks)
