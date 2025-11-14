@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from logger import logger
 from jinja2 import Template as JinjaTemplate
+import re
 from typing import Optional, List, Dict, Any
 
 
@@ -51,7 +52,7 @@ class TemplateService:
             name=payload.name,
             type=payload.type,
             subject=payload.subject,
-            body=payload.body,
+            content=payload.content,
             language=payload.language,
             version=1,
         )
@@ -69,7 +70,8 @@ class TemplateService:
             for v in payload.variables:
                 vv = template_variable_model(
                     template_id=tpl.id,
-                    variable_name=v.variable_name,
+                    name=v.name,
+                    link=v.link,
                     description=v.description,
                     is_required=v.is_required,
                 )
@@ -83,7 +85,7 @@ class TemplateService:
             name=tpl.name,
             type=tpl.type,
             subject=tpl.subject,
-            body=tpl.body,
+            content=tpl.content,
             language=tpl.language,
             changed_by=created_by,
         )
@@ -143,6 +145,98 @@ class TemplateService:
         return TemplateResponse.model_validate({**t.__dict__, "variables": vars_resp})
 
     @staticmethod
+    def get_template_by_id(db: Session, template_id: int) -> Optional[TemplateResponse]:
+        """Retrieve a template by its numeric ID. Raises ServiceException(404) if not found."""
+        t = db.query(template_model).filter(
+            template_model.id == template_id,
+            template_model.is_active == True,
+        ).first()
+        if not t:
+            raise ServiceException(404, "NotFound", "Template not found")
+        vars_q = db.query(template_variable_model).filter(template_variable_model.template_id == t.id).all()
+        vars_resp = [TemplateVariableResponse.model_validate(v) for v in vars_q] if vars_q else None
+        return TemplateResponse.model_validate({**t.__dict__, "variables": vars_resp})
+
+    @staticmethod
+    def update_template_by_id(db: Session, template_id: int, payload: TemplateUpdate, changed_by: Optional[str] = None) -> Optional[TemplateResponse]:
+        t = db.query(template_model).filter(template_model.id == template_id, template_model.is_active == True).first()
+        if not t:
+            raise ServiceException(404, "NotFound", "Template not found")
+
+        # store current as version
+        ver = template_version_model(
+            template_id=t.id,
+            version=t.version,
+            name=t.name,
+            type=t.type,
+            subject=t.subject,
+            content=t.content,
+            language=t.language,
+            changed_by=changed_by,
+        )
+        db.add(ver)
+
+        # apply updates
+        updatable = ["name", "type", "subject", "content", "language"]
+        for field in updatable:
+            if getattr(payload, field, None) is not None:
+                setattr(t, field, getattr(payload, field))
+
+        # increment version
+        t.version = t.version + 1
+
+        # variables: replace if provided
+        if getattr(payload, "variables", None) is not None:
+            # remove existing
+            db.query(template_variable_model).filter(template_variable_model.template_id == t.id).delete()
+            for v in payload.variables:
+                vv = template_variable_model(
+                    template_id=t.id,
+                    name=v.name,
+                    description=v.description,
+                    is_required=v.is_required,
+                )
+                db.add(vv)
+
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise ServiceException(400, "Validation failed", "Template name already exists for this language")
+        db.refresh(t)
+
+        # create new version entry for updated state
+        new_ver = template_version_model(
+            template_id=t.id,
+            version=t.version,
+            name=t.name,
+            type=t.type,
+            subject=t.subject,
+            content=t.content,
+            language=t.language,
+            changed_by=changed_by,
+        )
+        db.add(new_ver)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise ServiceException(400, "Validation failed", "Template update conflicts with existing template name/language")
+
+        vars_q = db.query(template_variable_model).filter(template_variable_model.template_id == t.id).all()
+        vars_resp = [TemplateVariableResponse.model_validate(v) for v in vars_q] if vars_q else None
+        return TemplateResponse.model_validate({**t.__dict__, "variables": vars_resp})
+
+    @staticmethod
+    def delete_template_by_id(db: Session, template_id: int) -> bool:
+        t = db.query(template_model).filter(template_model.id == template_id).first()
+        if not t:
+            raise ServiceException(404, "NotFound", "Template not found")
+        db.delete(t)
+        db.commit()
+        return True
+
+    @staticmethod
     def update_template(db: Session, name: str, payload: TemplateUpdate, changed_by: Optional[str] = None) -> Optional[TemplateResponse]:
         t = db.query(template_model).filter(template_model.name == name, template_model.is_active == True).first()
         if not t:
@@ -155,14 +249,14 @@ class TemplateService:
             name=t.name,
             type=t.type,
             subject=t.subject,
-            body=t.body,
+            content=t.content,
             language=t.language,
             changed_by=changed_by,
         )
         db.add(ver)
 
         # apply updates
-        updatable = ["name", "type", "subject", "body", "language"]
+        updatable = ["name", "type", "subject", "content", "language"]
         for field in updatable:
             if getattr(payload, field, None) is not None:
                 setattr(t, field, getattr(payload, field))
@@ -197,7 +291,7 @@ class TemplateService:
             name=t.name,
             type=t.type,
             subject=t.subject,
-            body=t.body,
+            content=t.content,
             language=t.language,
             changed_by=changed_by,
         )
@@ -214,11 +308,10 @@ class TemplateService:
 
     @staticmethod
     def delete_template(db: Session, name: str) -> bool:
-        t = db.query(template_model).filter(template_model.name == name, template_model.is_active == True).first()
+        t = db.query(template_model).filter(template_model.name == name).first()
         if not t:
             raise ServiceException(404, "NotFound", "Template not found")
-        # soft delete
-        t.is_active = False
+        db.delete(t)
         db.commit()
         return True
 
@@ -237,20 +330,71 @@ class TemplateService:
         return resp, meta
 
     @staticmethod
-    def render_template(db: Session, name: str, data: Dict[str, Any], language: Optional[str] = "en") -> Dict[str, Any]:
+    def render_template(db: Session, name: str, version: Optional[int], data: Dict[str, Any], language: Optional[str] = "en") -> Dict[str, Any]:
+        """Render a template by name. If `version` is provided, render using that historical version.
+        """
         t = db.query(template_model).filter(template_model.name == name, template_model.language == language, template_model.is_active == True).first()
         if not t:
             raise ServiceException(404, "NotFound", "Template not found")
-
+        template_version = db.query(template_model).filter(
+            template_model.version == version,
+        ).first()
+        if not template_version and version is not None:
+            raise ServiceException(404, "NotFound", "Template version not found")
+        # load template variables (for validation)
         vars_q = db.query(template_variable_model).filter(template_variable_model.template_id == t.id).all()
-        required = [v.variable_name for v in vars_q if v.is_required]
+        required = [v.name for v in vars_q if v.is_required]
         missing = [r for r in required if r not in data]
         if missing:
             raise ServiceException(400, "Validation failed", f"Missing required variables: {', '.join(missing)}")
 
-        # render subject and body with jinja2
+        # if a specific version is requested, fetch it from template_versions
+        used_version = t.version
+        subject_template = t.subject
+        content_template = t.content
+        used_type = t.type
+        if version is not None:
+            ver_row = db.query(template_version_model).filter(
+                template_version_model.template_id == t.id,
+                template_version_model.version == version,
+            ).first()
+            if not ver_row:
+                raise ServiceException(404, "NotFound", "Template version not found")
+            used_version = ver_row.version
+            subject_template = ver_row.subject
+            content_template = ver_row.content
+            used_type = ver_row.type
+
+        # render subject and content with jinja2
         rendered_subject = None
-        if t.subject:
-            rendered_subject = JinjaTemplate(t.subject).render(**data)
-        rendered_body = JinjaTemplate(t.body).render(**data)
-        return {"subject": rendered_subject, "body": rendered_body}
+        if subject_template:
+            rendered_subject = JinjaTemplate(subject_template).render(**data)
+        rendered_content = JinjaTemplate(content_template).render(**data)
+
+        # If the template type is 'push', ensure plain text (strip HTML tags).
+        if used_type == "push":
+            def strip_html(s: Optional[str]) -> Optional[str]:
+                if s is None:
+                    return None
+                # simple tag stripper
+                txt = re.sub(r'<[^>]+>', '', s)
+                # collapse whitespace
+                txt = re.sub(r'\s+', ' ', txt).strip()
+                return txt
+
+            rendered_subject = strip_html(rendered_subject)
+            rendered_content = strip_html(rendered_content)
+
+        # wrap it in a minimal HTML structure and convert URLs/newlines to clickable links/line breaks.
+        if used_type == "email":
+            has_html = bool(re.search(r'<[^>]+>', rendered_content or ""))
+            if not has_html and rendered_content:
+                def linkify(text: str) -> str:
+                    # simple URL -> anchor conversion
+                    return re.sub(r"(https?://[^\s]+)", r"<a href=\"\1\">\1</a>", text)
+
+                content_html = linkify(rendered_content)
+                content_html = content_html.replace('\n', '<br>')
+                rendered_content = f"<!DOCTYPE html> <meta charset=\"UTF-8\"><title>{t.name}</title><body>{content_html}</body></html>"
+
+        return {"subject": rendered_subject, "content": rendered_content, "version": used_version, "type": used_type}

@@ -20,7 +20,7 @@ class template_model(Base):
     name = Column(String(255), index=True, nullable=False)
     type = Column(String(50), nullable=False, default="email")  
     subject = Column(String(512), nullable=True)
-    body = Column(Text, nullable=False)
+    content = Column(Text, nullable=False)
     language = Column(String(10), nullable=False, default="en")
     version = Column(Integer, nullable=False, default=1)
     is_active = Column(Boolean, nullable=False, default=True)
@@ -33,7 +33,8 @@ class template_variable_model(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     template_id = Column(Integer, ForeignKey("templates.id", ondelete="CASCADE"), nullable=False, index=True)
-    variable_name = Column(String(128), nullable=False)
+    name = Column(String(128), nullable=False)
+    link = Column(String(512), nullable=True)
     description = Column(String(512), nullable=True)
     is_required = Column(Boolean, nullable=False, default=False)
 
@@ -47,7 +48,7 @@ class template_version_model(Base):
     name = Column(String(255), nullable=False)
     type = Column(String(50), nullable=False)
     subject = Column(String(512), nullable=True)
-    body = Column(Text, nullable=False)
+    content = Column(Text, nullable=False)
     language = Column(String(10), nullable=False, default="en")
     changed_by = Column(String(255), nullable=True)
     changed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

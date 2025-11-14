@@ -13,7 +13,8 @@ class PaginationMeta(BaseModel):
 
 
 class TemplateVariableBase(BaseModel):
-    variable_name: str = Field(..., min_length=1)
+    name: str = Field(..., min_length=1)
+    link: Optional[str] = None
     description: Optional[str] = None
     is_required: bool = False
 
@@ -33,7 +34,7 @@ class TemplateBase(BaseModel):
     name: str
     type: str = "email"
     subject: Optional[str] = None
-    body: str
+    content: str
     language: str = "en"
     variables: Optional[List[TemplateVariableCreate]] = None
 
@@ -52,7 +53,8 @@ class TemplateUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
     subject: Optional[str] = None
-    body: Optional[str] = None
+    version: Optional[int] = None
+    content: Optional[str] = None
     language: Optional[str] = None
     variables: Optional[List[TemplateVariableCreate]] = None
 
@@ -76,7 +78,7 @@ class TemplateVersionResponse(BaseModel):
     name: str
     type: str
     subject: Optional[str]
-    body: str
+    content: str
     language: str
     changed_by: Optional[str]
     changed_at: datetime
@@ -84,13 +86,20 @@ class TemplateVersionResponse(BaseModel):
         from_attributes = True
 
 
+# class RenderRequest(BaseModel):
+#     data: Dict[str, Any]
+
+
 class RenderRequest(BaseModel):
-    data: Dict[str, Any]
+    name: str
+    version: Optional[int]= None
+    variables: Dict[str, Any]
 
 
 class RenderResponse(BaseModel):
     subject: Optional[str] = None
-    body: str
+    version: Optional[int] = None
+    content: str
 
 
 class APIResponse(BaseModel):
