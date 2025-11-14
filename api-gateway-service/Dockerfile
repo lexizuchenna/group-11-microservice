@@ -1,9 +1,10 @@
 FROM golang:1.25-alpine AS builder
 WORKDIR /app
 
-# Copy Go module files first (if go.sum missing, go mod tidy will generate it)
-COPY go.mod go.sum ./
-RUN if [ -f go.sum ]; then echo "go.sum exists"; else touch go.sum; fi
+# Copy Go module files
+# The 'go mod tidy' command will create go.sum if it's missing
+COPY go.mod ./
+COPY go.sum ./
 RUN go mod tidy
 
 # Copy the rest of the project
