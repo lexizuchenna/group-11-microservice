@@ -1,9 +1,4 @@
-# ==============================
-# Builder stage
-# ==============================
-FROM golang:1.21-alpine AS builder
-
-# Set working directory inside container
+FROM golang:1.25-alpine AS builder
 WORKDIR /app
 
 # Copy Go module files first (if go.sum missing, go mod tidy will generate it)
