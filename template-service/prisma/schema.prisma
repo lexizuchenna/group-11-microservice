@@ -1,0 +1,41 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  binaryTargets = ["native"]
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  user_id String @id @default(uuid())
+  name String
+  email String @unique
+  push_token String?
+  preferences Json?
+  password String
+  created_at    DateTime @default(now())
+}
+
+model Template {
+  id          String   @id @default(uuid())
+  name        String
+  version     Int      @default(1)
+  language    String?  @default("en")
+  description String? 
+  content     String
+  variables   Json     // Example: ["name", "link", "otp"]
+
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([name, version]) // unique version per template name
+}
