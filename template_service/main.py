@@ -1,3 +1,4 @@
+from prometheus_fastapi_instrumentator import Instrumentator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from logger import logger
@@ -15,6 +16,7 @@ app.add_middleware(
   allow_methods=["*"],
   allow_headers=["*"],
 )
+Instrumentator().instrument(app).expose(app)
 
 app.include_router(templates_router, tags=["templates"])
 
