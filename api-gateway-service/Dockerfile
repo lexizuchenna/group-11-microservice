@@ -1,28 +1,31 @@
+# ------------------------------
+# Builder Stage: golang:1.25-alpine
+# ------------------------------
 FROM golang:1.25-alpine AS builder
+
 WORKDIR /app
 
-# Copy Go module files first (if go.sum missing, go mod tidy will generate it)
-COPY go.mod go.sum ./
-RUN if [ -f go.sum ]; then echo "go.sum exists"; else touch go.sum; fi
-RUN go mod tidy
+# 1. Dependency Layer: Copy only go.mod
+COPY go.mod ./
 
-# Copy the rest of the project
+# 2. Fix missing go.sum and download modules
+RUN if [ ! -f go.sum ]; then echo "go.sum missing, creating placeholder."; touch go.sum; fi \
+    && go mod download
+
+# 3. Copy the rest of the project source code
 COPY . .
 
-# Build the binary
-RUN go build -o /bin/api-gateway ./cmd/server
+# 4. Finalize the build
+# CGO_ENABLED=0 is essential for Alpine base image compatibility
+RUN go mod tidy
+RUN CGO_ENABLED=0 go build -o /bin/api-gateway ./cmd/server
 
-# ==============================
-# Minimal runtime stage
-# ==============================
+# ------------------------------
+# Minimal Runtime Stage
+# ------------------------------
 FROM alpine:latest
 WORKDIR /app
 
-# Copy binary from builder
 COPY --from=builder /bin/api-gateway /app/api-gateway
-
-# Expose the port your API runs on
 EXPOSE 8080
-
-# Run the binary
 CMD ["./api-gateway"]
